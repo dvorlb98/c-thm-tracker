@@ -1,36 +1,33 @@
-import { CheckCheck, RotateCcw } from 'lucide-react'
-import type { DailyNotes, DayPlan, ProgressState } from '../types'
-import { getDayNotes, getDayProgress } from '../utils/progress'
-import { Checklist } from './Checklist'
-import { NotesSection } from './NotesSection'
+import { useState } from 'react'
+import type { AppProgress, DayPlan, UpdateProgress } from '../types'
+import { calculateDayProgress } from '../lib/progress'
+import { ActiveRecallPanel } from './ActiveRecallPanel'
+import { CompetencyPanel } from './CompetencyPanel'
+import { ConceptBrief } from './ConceptBrief'
+import { DayTabs, type DayTab } from './DayTabs'
+import { ExercisePanel } from './ExercisePanel'
+import { FlashcardReview } from './FlashcardReview'
+import { NotesShutdown } from './NotesShutdown'
+import { OverviewPanel } from './OverviewPanel'
 import { ProgressBar } from './ProgressBar'
+import { QuizPanel } from './QuizPanel'
+import { ResourcesPanel } from './ResourcesPanel'
 
 interface DayCardProps {
   day: DayPlan
-  progress: ProgressState
+  progress: AppProgress
   isToday: boolean
-  onToggleTask: (dayNumber: number, taskId: string, completed: boolean) => void
-  onMarkDayComplete: (day: DayPlan) => void
-  onClearDay: (day: DayPlan) => void
-  onUpdateNotes: (dayNumber: number, patch: Partial<DailyNotes>) => void
+  updateProgress: UpdateProgress
 }
 
-export function DayCard({
-  day,
-  progress,
-  isToday,
-  onToggleTask,
-  onMarkDayComplete,
-  onClearDay,
-  onUpdateNotes,
-}: DayCardProps) {
-  const dayProgress = getDayProgress(day, progress)
-  const notes = getDayNotes(progress, day.dayNumber)
+export function DayCard({ day, progress, isToday, updateProgress }: DayCardProps) {
+  const [activeTab, setActiveTab] = useState<DayTab>('overview')
+  const score = calculateDayProgress(day, progress)
 
   return (
     <article
       id={`day-${day.dayNumber}`}
-      className={`scroll-mt-6 rounded-lg border p-5 shadow-2xl shadow-slate-950/20 ${
+      className={`scroll-mt-24 rounded-lg border p-5 shadow-2xl shadow-slate-950/20 ${
         isToday
           ? 'border-cyan-300/60 bg-cyan-300/[0.08] ring-2 ring-cyan-300/20'
           : 'border-white/10 bg-slate-900/80'
@@ -50,51 +47,57 @@ export function DayCard({
                 Today
               </span>
             ) : null}
+            <span className={`rounded-md px-2.5 py-1 text-sm font-medium ${
+              score.complete ? 'bg-emerald-300/15 text-emerald-100' : 'border border-white/10 bg-white/[0.04] text-slate-300'
+            }`}
+            >
+              {score.complete ? 'Complete' : 'In progress'}
+            </span>
           </div>
-          <h3 className="text-xl font-semibold text-white">{day.cTopic}</h3>
-          <p className="mt-2 text-sm font-medium text-cyan-200">{day.thmTopic}</p>
-          <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-300">
-            <span className="font-semibold text-slate-100">Output: </span>
-            {day.output}
-          </p>
+          <h3 className="text-xl font-semibold text-white">{day.title}</h3>
+          <p className="mt-2 text-sm font-medium text-cyan-200">{day.cTopic}</p>
+          <p className="mt-1 text-sm text-violet-200">{day.thmTopic}</p>
         </div>
-
-        <div className="flex flex-wrap gap-2 lg:justify-end">
-          <button
-            type="button"
-            onClick={() => onMarkDayComplete(day)}
-            className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-400 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-200"
-            aria-label={`Mark day ${day.dayNumber} complete`}
-          >
-            <CheckCheck className="h-4 w-4" aria-hidden="true" />
-            Mark day complete
-          </button>
-          <button
-            type="button"
-            onClick={() => onClearDay(day)}
-            className="inline-flex items-center justify-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-200"
-            aria-label={`Clear day ${day.dayNumber}`}
-          >
-            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            Clear day
-          </button>
+        <div className="min-w-56">
+          <ProgressBar label="Weighted progress" value={score.total} tone={isToday ? 'cyan' : 'emerald'} />
         </div>
       </div>
 
       <div className="mt-5">
-        <ProgressBar
-          label={`${dayProgress.completedTasks} / ${dayProgress.totalTasks} tasks`}
-          value={dayProgress.percent}
-          tone={isToday ? 'cyan' : 'emerald'}
-        />
+        <DayTabs activeTab={activeTab} onChange={setActiveTab} />
       </div>
 
-      <div className="mt-6">
-        <Checklist day={day} progress={progress} onToggleTask={onToggleTask} />
-      </div>
-
-      <div className="mt-6 border-t border-white/10 pt-5">
-        <NotesSection dayNumber={day.dayNumber} notes={notes} onChange={onUpdateNotes} />
+      <div className="mt-5">
+        {activeTab === 'overview' ? (
+          <OverviewPanel day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+        {activeTab === 'competencies' ? (
+          <CompetencyPanel day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+        {activeTab === 'active-recall' ? (
+          <ActiveRecallPanel day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+        {activeTab === 'concept' ? <ConceptBrief day={day} /> : null}
+        {activeTab === 'exercises' ? (
+          <ExercisePanel day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+        {activeTab === 'flashcards' ? (
+          <FlashcardReview
+            cards={day.flashcards}
+            progress={progress}
+            updateProgress={updateProgress}
+            title={`Day ${day.dayNumber} flashcards`}
+          />
+        ) : null}
+        {activeTab === 'quiz' ? (
+          <QuizPanel day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+        {activeTab === 'notes' ? (
+          <NotesShutdown day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+        {activeTab === 'resources' ? (
+          <ResourcesPanel day={day} progress={progress} updateProgress={updateProgress} />
+        ) : null}
       </div>
     </article>
   )

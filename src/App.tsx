@@ -1,163 +1,63 @@
 import { useMemo, useState } from 'react'
-import { BadDayMinimum } from './components/BadDayMinimum'
-import { DailyTemplate } from './components/DailyTemplate'
-import { DayCard } from './components/DayCard'
+import { allFlashcards, curriculum } from './data/curriculum'
+import { BackupPanel } from './components/BackupPanel'
+import { CompetenciesDashboard } from './components/CompetenciesDashboard'
+import { DeepWorkMode } from './components/DeepWorkMode'
+import { DueCardsDashboard } from './components/DueCardsDashboard'
+import { FlashcardReview } from './components/FlashcardReview'
+import { GlobalNav, type AppView } from './components/GlobalNav'
 import { Header } from './components/Header'
-import { ImportExportControls } from './components/ImportExportControls'
+import { PlanView } from './components/PlanView'
 import { ProgressOverview } from './components/ProgressOverview'
-import { SearchBar } from './components/SearchBar'
+import { QuizResultsDashboard } from './components/QuizResultsDashboard'
+import { ResourcesPanel } from './components/ResourcesPanel'
 import { TodayPanel } from './components/TodayPanel'
-import { WeekFilter } from './components/WeekFilter'
-import { plan, weekTitles } from './data/plan'
-import { useLocalStorage } from './hooks/useLocalStorage'
-import type { DailyNotes, DayPlan, ProgressState } from './types'
+import { useProgressStore } from './hooks/useProgressStore'
+import { getCurrentDayNumber, getLocalDateKey } from './lib/date'
 import {
-  STORAGE_KEY,
-  createEmptyNotes,
-  createEmptyProgress,
-  dayMatchesQuery,
-  getCurrentDayNumber,
-  getLocalDateKey,
+  buildReviewQueue,
+  getLastReviewedCardAt,
   getProgressStats,
-  isProgressState,
-} from './utils/progress'
+  getShiftedStartDate,
+} from './lib/progress'
+import { getLastQuizAttemptAt } from './lib/quiz'
 
 function App() {
-  const [progress, setProgress, storageMeta] = useLocalStorage<ProgressState>(
-    STORAGE_KEY,
-    createEmptyProgress(),
-    isProgressState,
-  )
-  const [selectedWeek, setSelectedWeek] = useState<number | 'all'>('all')
-  const [searchQuery, setSearchQuery] = useState('')
-
-  const stats = useMemo(() => getProgressStats(plan, progress), [progress])
+  const {
+    progress,
+    updateProgress,
+    replaceProgress,
+    resetProgress,
+    storageMessage,
+    rawCorruptedData,
+    clearStorageMessage,
+  } = useProgressStore()
+  const [activeView, setActiveView] = useState<AppView>('today')
   const currentDayNumber = getCurrentDayNumber(progress.startDate)
-  const todayPlan = plan.find((day) => day.dayNumber === currentDayNumber)
-
-  const filteredDays = useMemo(
-    () =>
-      plan.filter((day) => {
-        const matchesWeek = selectedWeek === 'all' || day.weekNumber === selectedWeek
-        return matchesWeek && dayMatchesQuery(day, searchQuery)
-      }),
-    [searchQuery, selectedWeek],
+  const safeDayNumber =
+    currentDayNumber && currentDayNumber >= 1 && currentDayNumber <= 30 ? currentDayNumber : 1
+  const todayPlan = curriculum.find((day) => day.dayNumber === currentDayNumber)
+  const stats = useMemo(() => getProgressStats(progress), [progress])
+  const reviewQueue = useMemo(
+    () => buildReviewQueue(progress, currentDayNumber ?? 1),
+    [currentDayNumber, progress],
   )
+  const lastReviewedCardAt = getLastReviewedCardAt(progress)
+  const lastQuizAttemptAt = getLastQuizAttemptAt(progress)
 
-  const groupedDays = useMemo(() => {
-    const groups = new Map<number, DayPlan[]>()
-
-    filteredDays.forEach((day) => {
-      groups.set(day.weekNumber, [...(groups.get(day.weekNumber) ?? []), day])
-    })
-
-    return Array.from(groups.entries()).sort(([firstWeek], [secondWeek]) => firstWeek - secondWeek)
-  }, [filteredDays])
-
-  const updateProgress = (updater: (current: ProgressState, savedAt: string) => ProgressState) => {
-    setProgress((current) => updater(current, new Date().toISOString()))
-  }
-
-  const handleToggleTask = (dayNumber: number, taskId: string, completed: boolean) => {
-    updateProgress((current, savedAt) => ({
-      ...current,
-      tasks: {
-        ...current.tasks,
-        [taskId]: {
-          completed,
-          completedAt: completed ? savedAt : null,
-          dayNumber,
-          taskId,
-        },
-      },
-      lastSavedAt: savedAt,
-      lastCompletedTaskAt: completed ? savedAt : current.lastCompletedTaskAt,
-    }))
-  }
-
-  const handleMarkDayComplete = (day: DayPlan) => {
-    updateProgress((current, savedAt) => {
-      const nextTasks = { ...current.tasks }
-
-      day.tasks.forEach((task) => {
-        nextTasks[task.id] = {
-          completed: true,
-          completedAt: current.tasks[task.id]?.completedAt ?? savedAt,
-          dayNumber: day.dayNumber,
-          taskId: task.id,
-        }
-      })
-
-      return {
-        ...current,
-        tasks: nextTasks,
-        lastSavedAt: savedAt,
-        lastCompletedTaskAt: savedAt,
-      }
-    })
-  }
-
-  const handleClearDay = (day: DayPlan) => {
-    updateProgress((current, savedAt) => {
-      const nextTasks = { ...current.tasks }
-
-      day.tasks.forEach((task) => {
-        nextTasks[task.id] = {
-          completed: false,
-          completedAt: null,
-          dayNumber: day.dayNumber,
-          taskId: task.id,
-        }
-      })
-
-      return {
-        ...current,
-        tasks: nextTasks,
-        lastSavedAt: savedAt,
-      }
-    })
-  }
-
-  const handleUpdateNotes = (dayNumber: number, patch: Partial<DailyNotes>) => {
-    updateProgress((current, savedAt) => {
-      const dayKey = String(dayNumber)
-
-      return {
-        ...current,
-        notes: {
-          ...current.notes,
-          [dayKey]: {
-            ...createEmptyNotes(),
-            ...current.notes[dayKey],
-            ...patch,
-            updatedAt: savedAt,
-          },
-        },
-        lastSavedAt: savedAt,
-      }
-    })
-  }
-
-  const handleStartPlanToday = () => {
-    updateProgress((current, savedAt) => ({
+  const startPlanToday = () => {
+    updateProgress((current) => ({
       ...current,
       startDate: getLocalDateKey(),
-      lastSavedAt: savedAt,
     }))
   }
 
-  const handleShowToday = () => {
-    if (currentDayNumber === null) {
+  const showToday = () => {
+    if (!currentDayNumber) {
       return
     }
 
-    const targetDay = plan.find((day) => day.dayNumber === currentDayNumber)
-
-    if (targetDay) {
-      setSelectedWeek(targetDay.weekNumber)
-      setSearchQuery('')
-    }
-
+    setActiveView('plan')
     window.setTimeout(() => {
       document
         .getElementById(`day-${currentDayNumber}`)
@@ -165,45 +65,44 @@ function App() {
     }, 0)
   }
 
-  const handleImportProgress = (importedProgress: ProgressState) => {
-    setProgress({
-      ...importedProgress,
-      lastSavedAt: new Date().toISOString(),
-    })
+  const continueWithoutShift = () => {
+    window.alert('Continuing without shifting keeps the saved start date unchanged.')
   }
 
-  const handleResetAll = () => {
+  const shiftPlan = () => {
     const confirmed = window.confirm(
-      'Reset all progress, notes, shutdown fields, and the start date? This cannot be undone unless you exported a JSON backup.',
+      'Shift the plan by one day? This moves your saved start date forward by one calendar day and makes today map to the previous plan day.',
     )
 
     if (!confirmed) {
       return
     }
 
-    setProgress({
-      ...createEmptyProgress(),
-      lastSavedAt: new Date().toISOString(),
-    })
+    updateProgress((current) => ({
+      ...current,
+      startDate: getShiftedStartDate(current.startDate),
+    }))
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <Header
         lastSavedAt={progress.lastSavedAt}
-        lastCompletedTaskAt={progress.lastCompletedTaskAt}
+        lastReviewedCardAt={lastReviewedCardAt}
+        lastQuizAttemptAt={lastQuizAttemptAt}
       />
+      <GlobalNav activeView={activeView} onChange={setActiveView} />
 
       <main className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
-        {storageMeta.loadError ? (
+        {storageMessage ? (
           <div
             role="alert"
             className="flex flex-col justify-between gap-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100 sm:flex-row sm:items-center"
           >
-            <span>{storageMeta.loadError}</span>
+            <span>{storageMessage}</span>
             <button
               type="button"
-              onClick={storageMeta.clearLoadError}
+              onClick={clearStorageMessage}
               className="self-start rounded-md border border-amber-200/30 px-3 py-1.5 font-medium text-amber-50 transition hover:bg-amber-200/10 focus:outline-none focus:ring-2 focus:ring-amber-100 sm:self-auto"
             >
               Dismiss
@@ -213,83 +112,65 @@ function App() {
 
         <ProgressOverview stats={stats} />
 
-        <TodayPanel
-          startDate={progress.startDate}
-          currentDayNumber={currentDayNumber}
-          todayPlan={todayPlan}
-          onStartPlanToday={handleStartPlanToday}
-          onShowToday={handleShowToday}
-        />
-
-        <ImportExportControls
-          progress={progress}
-          onImport={handleImportProgress}
-          onResetAll={handleResetAll}
-        />
-
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,380px)]">
-          <div className="grid gap-5">
-            <WeekFilter
-              selectedWeek={selectedWeek}
-              weekTitles={weekTitles}
-              onChange={setSelectedWeek}
+        {activeView === 'today' ? (
+          <>
+            <TodayPanel
+              progress={progress}
+              currentDayNumber={currentDayNumber}
+              todayPlan={todayPlan}
+              reviewQueue={reviewQueue}
+              onStartPlanToday={startPlanToday}
+              onShowToday={showToday}
+              onContinueWithoutShift={continueWithoutShift}
+              onShiftPlan={shiftPlan}
             />
-            <SearchBar value={searchQuery} onChange={setSearchQuery} />
-          </div>
-          <div className="grid gap-5">
-            <BadDayMinimum />
-          </div>
-        </div>
+            <DeepWorkMode
+              progress={progress}
+              updateProgress={updateProgress}
+              defaultDayNumber={safeDayNumber}
+            />
+            <DueCardsDashboard progress={progress} />
+          </>
+        ) : null}
 
-        <DailyTemplate />
+        {activeView === 'plan' ? (
+          <PlanView
+            progress={progress}
+            currentDayNumber={currentDayNumber}
+            updateProgress={updateProgress}
+          />
+        ) : null}
 
-        <section aria-labelledby="plan-title" className="space-y-6">
-          <div className="flex flex-col justify-between gap-2 border-b border-white/10 pb-4 sm:flex-row sm:items-end">
-            <div>
-              <h2 id="plan-title" className="text-2xl font-semibold text-white">
-                30-day plan
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Showing {filteredDays.length} of {plan.length} days.
-              </p>
-            </div>
-            <p className="text-sm text-slate-400">
-              Search and filters do not change saved progress.
-            </p>
-          </div>
+        {activeView === 'review' ? (
+          <>
+            <DueCardsDashboard progress={progress} />
+            <FlashcardReview
+              cards={allFlashcards}
+              progress={progress}
+              updateProgress={updateProgress}
+              title="Global review queue"
+            />
+          </>
+        ) : null}
 
-          {groupedDays.length === 0 ? (
-            <div className="rounded-lg border border-white/10 bg-slate-900/80 p-6 text-center text-slate-300">
-              No days match the current filters.
-            </div>
-          ) : null}
+        {activeView === 'quiz-results' ? <QuizResultsDashboard progress={progress} /> : null}
 
-          {groupedDays.map(([weekNumber, days]) => (
-            <section key={weekNumber} aria-labelledby={`week-${weekNumber}-title`} className="space-y-4">
-              <div className="rounded-lg border border-white/10 bg-slate-900/70 p-4">
-                <p className="text-sm font-semibold text-cyan-200">Week {weekNumber}</p>
-                <h3 id={`week-${weekNumber}-title`} className="mt-1 text-xl font-semibold text-white">
-                  {weekTitles[weekNumber - 1]}
-                </h3>
-              </div>
+        {activeView === 'competencies' ? (
+          <CompetenciesDashboard progress={progress} updateProgress={updateProgress} />
+        ) : null}
 
-              <div className="space-y-4">
-                {days.map((day) => (
-                  <DayCard
-                    key={day.dayNumber}
-                    day={day}
-                    progress={progress}
-                    isToday={currentDayNumber === day.dayNumber}
-                    onToggleTask={handleToggleTask}
-                    onMarkDayComplete={handleMarkDayComplete}
-                    onClearDay={handleClearDay}
-                    onUpdateNotes={handleUpdateNotes}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </section>
+        {activeView === 'resources' ? (
+          <ResourcesPanel days={curriculum} progress={progress} updateProgress={updateProgress} />
+        ) : null}
+
+        {activeView === 'backup' ? (
+          <BackupPanel
+            progress={progress}
+            rawCorruptedData={rawCorruptedData}
+            onImport={replaceProgress}
+            onResetAll={resetProgress}
+          />
+        ) : null}
       </main>
     </div>
   )

@@ -1,82 +1,83 @@
-# C + TryHackMe 30-Day Tracker
+# C + TryHackMe Learning System
 
-App web local para registrar progreso de estudio con C Programming: A Modern Approach, 2nd Edition de K. N. King y TryHackMe Cyber Security Learning Roadmap.
+Local-first Vite + React + TypeScript + Tailwind app for a 30-day C and TryHackMe study plan.
 
-## Requisitos
+The app includes:
 
-- Node.js instalado.
-- npm instalado.
-- Navegador moderno.
+- Today view with a dynamic Hour 1 review queue.
+- 30-day plan with daily tabs.
+- Active recall, interleaving, exercises, quizzes, notes, shutdown, resources, and flashcards.
+- Spaced-repetition flashcard review.
+- Quiz results and failed-question review.
+- Competency dashboard.
+- Deep Work Mode.
+- Browser-local JSON export/import backup.
 
-## Como correrlo localmente
+## Run Locally
 
 ```bash
 npm install
 npm run dev
 ```
 
-Despues abre la URL que muestre Vite, normalmente:
+Open the Vite URL, usually:
 
 ```text
 http://localhost:5173
 ```
 
-## Scripts disponibles
+## Build
 
 ```bash
-npm run dev
 npm run build
-npm run preview
-npm run lint
 ```
 
-## Como se guarda el progreso
+The build output is static and deployable to Cloudflare Pages.
 
-La app no usa backend ni base de datos externa. Todo se guarda en `localStorage` del navegador bajo la key:
+## Local Progress
+
+There is no backend, database, auth, API key, or cloud sync. Progress is saved in the current browser with `localStorage`.
+
+Current storage key:
+
+```text
+c-thm-learning-system-v2
+```
+
+The app stores:
+
+- start date
+- completed tasks and exercises
+- active recall and interleaving answers
+- exercise reflections
+- quiz sessions and failed questions
+- flashcard review state and scheduling history
+- notes, summaries, shutdown fields, and shutdown checkbox
+- competency ratings
+- user-added resources
+- deep work sessions
+- capstone planning fields
+- schema version and last saved timestamp
+
+## Migration
+
+If old progress exists under:
 
 ```text
 c-thm-progress-v1
 ```
 
-Cada tarea guarda:
+the app migrates task checks, notes, and start date into the v2 schema and leaves the old key untouched.
 
-- `completed`: true/false
-- `completedAt`: fecha/hora ISO cuando se marco como completada
-- `dayNumber`
-- `taskId`
+If localStorage is corrupted, the app starts safely, preserves the raw value under a corrupted backup key, and shows a recovery message. The Backup view can export raw corrupted data if available.
 
-Tambien se guardan:
+## Backup
 
-- `startDate`
-- `lastSavedAt`
-- `lastCompletedTaskAt`
-- notas por dia
-- campos de Daily shutdown por dia
+Use the Backup view to:
 
-Si el contenido de `localStorage` esta corrupto o no tiene la forma esperada, la app arranca con progreso limpio y mueve el valor anterior a una key de backup corrupta.
+- export a JSON backup
+- import a validated v2 JSON backup after confirmation
+- view schema version and local progress size
+- reset all progress only after typing `RESET`
 
-## Exportar e importar backup
-
-Usa los controles de la seccion `Backup controls`:
-
-- `Export JSON`: descarga un archivo con progreso, notas, fecha de inicio y timestamps.
-- `Import JSON`: carga un backup JSON y valida su estructura antes de reemplazar el progreso actual.
-- `Reset all`: borra progreso, notas y fecha de inicio despues de pedir confirmacion.
-
-Recomendacion: exporta un JSON al final de cada semana o antes de limpiar datos del navegador.
-
-## Vista Today
-
-Si no hay fecha de inicio, usa `Start plan today`. La app guarda la fecha local como Dia 1 y calcula:
-
-```text
-currentDay = diferencia de dias + 1
-```
-
-Si `currentDay` esta entre 1 y 30, ese dia se resalta en el plan. Si ya pasaron mas de 30 dias, la app entra en modo review.
-
-## Limitaciones
-
-- El progreso solo existe en el navegador donde uses la app, salvo que exportes/importes JSON.
-- Si limpias datos del sitio desde el navegador sin backup, `localStorage` se pierde.
-- No hay sincronizacion entre dispositivos porque no hay backend.
+Progress is browser-local. Export a JSON backup regularly if you want to preserve progress or move to another device.
